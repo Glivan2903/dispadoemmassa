@@ -267,7 +267,7 @@ const Dashboard = () => {
 
         <Card>
           <CardHeader>
-            <CardTitle>Configuração da API</CardTitle>
+            <CardTitle>URL da API</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">

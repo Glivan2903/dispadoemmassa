@@ -1,18 +1,18 @@
 import { Sidebar } from './Sidebar';
-import { cn } from '@/lib/utils';
 
 interface PageLayoutProps {
   children: React.ReactNode;
-  className?: string;
 }
 
-export function PageLayout({ children, className }: PageLayoutProps) {
+export const PageLayout = ({ children }: PageLayoutProps) => {
   return (
-    <div className="flex h-screen bg-background">
+    <div className="min-h-screen bg-background">
       <Sidebar />
-      <main className={cn('flex-1 overflow-y-auto p-8', className)}>
-        {children}
+      <main className="md:ml-64 min-h-screen">
+        <div className="container mx-auto p-4">
+          {children}
+        </div>
       </main>
     </div>
   );
-} 
+}; 

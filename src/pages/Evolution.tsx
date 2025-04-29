@@ -1,402 +1,511 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Link, PawPrint, Plus, QrCode, Loader2, RefreshCw, Check } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { useAuth } from '@/context/AuthContext';
-import { ThemeToggle } from '@/components/ThemeToggle';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { PageLayout } from '@/components/layout/PageLayout';
-import { PageHeader } from '@/components/layout/PageHeader';
-import { ContentCard } from '@/components/ui/ContentCard';
 import { useWebhookUrls } from '@/hooks/useWebhookUrls';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Loader2, Check, X } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { format } from 'date-fns';
+
+interface Instance {
+  name: string;
+  status: 'online' | 'offline';
+  qrCode?: string;
+  data_atualizacao: string;
+}
 
 const Evolution = () => {
-  const navigate = useNavigate();
-  const { user, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
-  const [instanceName, setInstanceName] = useState('');
-  const [qrCodeData, setQrCodeData] = useState<string | null>(null);
-  const [confirmationStatus, setConfirmationStatus] = useState<'waiting' | 'confirmed' | 'failed' | null>(null);
-  const statusCheckIntervalRef = useRef<number | null>(null);
-  const retryCountRef = useRef<number>(0);
-  const maxRetries = 3;
-  const [isLoading, setIsLoading] = useState(false);
   const { urls } = useWebhookUrls();
-  
-  useEffect(() => {
-    if (!authLoading && !user) {
-      navigate('/');
-    }
-  }, [user, authLoading, navigate]);
-  
-  useEffect(() => {
-    return () => {
-      if (statusCheckIntervalRef.current !== null) {
-        clearInterval(statusCheckIntervalRef.current);
-      }
-    };
-  }, []);
-  
-  const checkConnectionStatus = async () => {
-    try {
-      console.log('Checking connection status for:', instanceName);
-      const response = await fetch(urls.evolutionConfirm, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          instanceName: instanceName.trim() 
-        }),
-      });
-      
-      if (response.ok) {
-        const responseText = await response.text();
-        console.log('Connection status response:', responseText);
-        
-        let responseData;
-        
-        try {
-          responseData = JSON.parse(responseText);
-          console.log('Parsed response data:', responseData);
-        } catch (parseError) {
-          console.error('Error parsing response JSON:', parseError);
-          toast({
-            title: "Erro no formato da resposta",
-            description: "Não foi possível processar a resposta do servidor.",
-            variant: "destructive"
-          });
-          return;
-        }
-        
-        if (responseData && typeof responseData.respond === 'string') {
-          const status = responseData.respond;
-          console.log('Response status value:', status);
-          
-          if (status === "positivo") {
-            console.log('Connection confirmed - stopping interval');
-            if (statusCheckIntervalRef.current !== null) {
-              clearInterval(statusCheckIntervalRef.current);
-              statusCheckIntervalRef.current = null;
-            }
-            setConfirmationStatus('confirmed');
-            retryCountRef.current = 0;
-            toast({
-              title: "Conexão estabelecida!",
-              description: "Seu WhatsApp foi conectado com sucesso.",
-              variant: "default" 
-            });
-          } else if (status === "negativo") {
-            retryCountRef.current += 1;
-            console.log(`Connection failed - attempt ${retryCountRef.current} of ${maxRetries}`);
-            
-            if (retryCountRef.current >= maxRetries) {
-              console.log('Maximum retry attempts reached - updating QR code');
-              if (statusCheckIntervalRef.current !== null) {
-                clearInterval(statusCheckIntervalRef.current);
-                statusCheckIntervalRef.current = null;
-              }
-              setConfirmationStatus('failed');
-              retryCountRef.current = 0;
-              toast({
-                title: "Falha na conexão",
-                description: "Não foi possível conectar após várias tentativas. Obtendo novo QR code...",
-                variant: "destructive"
-              });
-              updateQrCode();
-            } else {
-              console.log(`Retrying... (${retryCountRef.current}/${maxRetries})`);
-              toast({
-                title: "Tentando novamente",
-                description: `Tentativa ${retryCountRef.current} de ${maxRetries}`,
-                variant: "default"
-              });
-            }
-          } else {
-            console.log('Unknown status value:', status);
-            toast({
-              title: "Status desconhecido",
-              description: "Recebemos uma resposta inesperada do servidor.",
-              variant: "destructive"
-            });
-          }
-        } else {
-          console.log('Response does not have a valid respond property:', responseData);
-          toast({
-            title: "Formato inesperado",
-            description: "A resposta do servidor não está no formato esperado.",
-            variant: "destructive"
-          });
-        }
-      } else {
-        console.error('Erro ao verificar status:', await response.text());
-        toast({
-          title: "Erro na verificação",
-          description: "Não foi possível verificar o status da conexão.",
-          variant: "destructive"
-        });
-      }
-    } catch (error) {
-      console.error('Erro ao verificar status da conexão:', error);
-      toast({
-        title: "Erro de conexão",
-        description: "Ocorreu um erro ao verificar o status da conexão.",
-        variant: "destructive"
-      });
-    }
-  };
-  
-  const updateQrCode = async () => {
-    try {
-      setIsLoading(true);
-      console.log('Updating QR code for instance:', instanceName);
-      const response = await fetch(urls.evolutionUpdateQrCode, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          instanceName: instanceName.trim() 
-        }),
-      });
-      
-      console.log('QR code update response status:', response.status);
-      
-      if (response.ok) {
-        const blob = await response.blob();
-        console.log('Received blob content type:', blob.type);
-        
-        const qrCodeUrl = URL.createObjectURL(blob);
-        setQrCodeData(qrCodeUrl);
-        setConfirmationStatus('waiting');
-        retryCountRef.current = 0;
-        console.log('QR code updated successfully');
-        
-        if (statusCheckIntervalRef.current !== null) {
-          clearInterval(statusCheckIntervalRef.current);
-        }
-        
-        console.log('Starting new polling interval');
-        statusCheckIntervalRef.current = window.setInterval(() => {
-          checkConnectionStatus();
-        }, 10000);
-        
-        toast({
-          title: "QR Code atualizado",
-          description: "Escaneie o novo QR code para conectar seu WhatsApp.",
-        });
-      } else {
-        const errorText = await response.text();
-        console.error('Falha ao atualizar QR code:', errorText);
-        toast({
-          title: "Erro",
-          description: "Não foi possível atualizar o QR code. Tente novamente.",
-          variant: "destructive"
-        });
-      }
-    } catch (error) {
-      console.error('Erro ao atualizar QR code:', error);
-      toast({
-        title: "Erro",
-        description: "Ocorreu um erro ao atualizar o QR code.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-  
+  const [isLoading, setIsLoading] = useState(false);
+  const [instanceName, setInstanceName] = useState('');
+  const [instances, setInstances] = useState<Instance[]>([]);
+  const [selectedInstance, setSelectedInstance] = useState<Instance | null>(null);
+  const [isQrCodeDialogOpen, setIsQrCodeDialogOpen] = useState(false);
+
   const handleCreateInstance = async () => {
     if (!instanceName.trim()) {
-      toast({
-        title: "Nome obrigatório",
-        description: "Por favor, informe um nome para a instância.",
-        variant: "destructive"
-      });
+      toast({ title: 'Nome da instância obrigatório', variant: 'destructive' });
       return;
     }
 
     setIsLoading(true);
-    setQrCodeData(null);
-    setConfirmationStatus(null);
-    retryCountRef.current = 0;
-    
     try {
-      console.log('Creating instance with name:', instanceName);
-      const response = await fetch(urls.evolutionInstance, {
+      const response = await fetch(urls.evolutionCreateInstance, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
-        body: JSON.stringify({ 
-          instanceName: instanceName.trim() 
-        }),
+        body: JSON.stringify({ instanceName: instanceName.trim() })
       });
-      
-      console.log('Create instance response status:', response.status);
-      
-      if (response.ok) {
-        const blob = await response.blob();
-        console.log('Received blob content type:', blob.type);
-        
-        const qrCodeUrl = URL.createObjectURL(blob);
-        setQrCodeData(qrCodeUrl);
-        setConfirmationStatus('waiting');
-        
-        if (statusCheckIntervalRef.current !== null) {
-          clearInterval(statusCheckIntervalRef.current);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.message || 'Erro ao criar instância');
+      }
+
+      // A resposta é uma imagem PNG direta
+      const blob = await response.blob();
+      const qrCodeUrl = URL.createObjectURL(blob);
+
+      // Converter o blob para base64
+      const reader = new FileReader();
+      reader.readAsDataURL(blob);
+      reader.onloadend = async () => {
+        const base64data = reader.result as string;
+        const qrCodeBase64 = base64data.split(',')[1]; // Remove o prefixo data:image/png;base64,
+
+        // Prepara os dados para o Supabase
+        const supabaseData = {
+          nome: instanceName.trim(),
+          qrcode: qrCodeBase64,
+          status: 'pendente',
+          data_criacao: new Date().toISOString(),
+          data_atualizacao: new Date().toISOString()
+        };
+
+        // Salvar no Supabase
+        const { data, error } = await supabase
+          .from('instancias')
+          .insert(supabaseData)
+          .select()
+          .single();
+
+        if (error) {
+          console.error('Erro ao salvar instância:', error);
+          toast({ title: 'Erro ao salvar instância no banco', variant: 'destructive' });
+          return;
         }
         
-        console.log('Starting polling interval');
-        statusCheckIntervalRef.current = window.setInterval(() => {
-          checkConnectionStatus();
-        }, 10000);
-        
-        toast({
-          title: "Instância criada",
-          description: "Escaneie o QR code para conectar seu WhatsApp.",
-        });
-      } else {
-        const errorText = await response.text();
-        console.error('Falha ao criar instância:', errorText);
-        toast({
-          title: "Erro",
-          description: "Não foi possível criar a instância. Tente novamente.",
-          variant: "destructive"
-        });
-      }
+        console.log('Instância salva com sucesso:', data);
+      };
+
+      const newInstance: Instance = {
+        name: instanceName.trim(),
+        status: 'offline',
+        qrCode: qrCodeUrl,
+        data_atualizacao: new Date().toISOString()
+      };
+      setInstances(prev => [...prev, newInstance]);
+      setSelectedInstance(newInstance);
+      setIsQrCodeDialogOpen(true);
+      setInstanceName('');
+      toast({ title: 'Instância criada com sucesso!' });
     } catch (error) {
       console.error('Erro ao criar instância:', error);
-      toast({
-        title: "Erro",
-        description: "Ocorreu um erro ao criar a instância.",
-        variant: "destructive"
+            toast({
+        title: 'Erro ao criar instância', 
+        description: error instanceof Error ? error.message : 'Erro desconhecido',
+        variant: 'destructive' 
       });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleTryAgain = () => {
-    setConfirmationStatus(null);
-    setQrCodeData(null);
-    handleCreateInstance();
+  const checkInstanceStatus = async (instanceName: string) => {
+    try {
+      const response = await fetch('https://nwh.devautomatizadores.com.br/webhook/confirma_conexao', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ instanceName })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.message || 'Erro ao verificar status');
+      }
+
+      const data = await response.json();
+      const newStatus = data.status === 'connected' ? 'online' : 'offline';
+
+      // Prepara os dados para o Supabase
+      const supabaseData = {
+        status: newStatus === 'online' ? 'conectada' : 'pendente',
+        data_atualizacao: new Date().toISOString()
+      };
+
+      // Atualizar no Supabase
+      const { data: updateData, error } = await supabase
+        .from('instancias')
+        .update(supabaseData)
+        .eq('nome', instanceName)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Erro ao atualizar status:', error);
+      } else {
+        console.log('Status atualizado com sucesso:', updateData);
+      }
+
+      setInstances(prev => prev.map(instance => 
+        instance.name === instanceName 
+          ? { ...instance, status: newStatus }
+          : instance
+      ));
+
+      if (newStatus === 'online' && selectedInstance?.name === instanceName) {
+        setIsQrCodeDialogOpen(false);
+      }
+    } catch (error) {
+      console.error('Erro ao verificar status:', error);
+    }
   };
 
-  const resetQrCode = () => {
-    setConfirmationStatus(null);
-    setQrCodeData(null);
-    updateQrCode();
+  const handleConnect = async (instanceName: string) => {
+    setIsLoading(true);
+    try {
+      // Atualizar QR Code
+      const response = await fetch('https://nwh.devautomatizadores.com.br/webhook/atualiza_qrcode', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ instanceName })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.message || 'Erro ao atualizar QR Code');
+      }
+      
+      // A resposta é uma imagem PNG direta
+        const blob = await response.blob();
+      const qrCodeUrl = URL.createObjectURL(blob);
+
+      // Converter o blob para base64
+      const reader = new FileReader();
+      reader.readAsDataURL(blob);
+      reader.onloadend = async () => {
+        const base64data = reader.result as string;
+        const qrCodeBase64 = base64data.split(',')[1];
+
+        // Atualizar QR Code no Supabase
+        const { error } = await supabase
+          .from('instancias')
+          .update({
+            qrcode: qrCodeBase64,
+            data_atualizacao: new Date().toISOString()
+          })
+          .eq('nome', instanceName)
+          .select()
+          .single();
+
+        if (error) {
+          console.error('Erro ao atualizar QR Code no banco:', error);
+          toast({
+            title: 'Erro ao atualizar QR Code',
+            description: error.message,
+            variant: 'destructive'
+          });
+          return;
+        }
+      };
+
+      // Atualizar estado local
+      const instance = instances.find(i => i.name === instanceName);
+      if (instance) {
+        setSelectedInstance({
+          ...instance,
+          qrCode: qrCodeUrl
+        });
+        setIsQrCodeDialogOpen(true);
+      }
+
+      toast({ title: 'QR Code atualizado com sucesso!' });
+    } catch (error) {
+      console.error('Erro ao atualizar QR Code:', error);
+      toast({
+        title: 'Erro ao atualizar QR Code',
+        description: error instanceof Error ? error.message : 'Erro desconhecido',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
+  
+  const handleDisconnect = async (instanceName: string) => {
+    setIsLoading(true);
+    try {
+      // Atualizar status no Supabase
+      const { error } = await supabase
+        .from('instancias')
+        .update({
+          status: 'pendente',
+          data_atualizacao: new Date().toISOString()
+        })
+        .eq('nome', instanceName)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Erro ao desconectar instância:', error);
+        toast({
+          title: 'Erro ao desconectar instância',
+          description: error.message,
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      // Atualizar estado local
+      setInstances(prev => prev.map(instance => 
+        instance.name === instanceName 
+          ? { ...instance, status: 'offline' }
+          : instance
+      ));
+
+      toast({ title: 'Instância desconectada com sucesso!' });
+    } catch (error) {
+      console.error('Erro ao desconectar instância:', error);
+      toast({
+        title: 'Erro ao desconectar instância',
+        description: 'Não foi possível desconectar a instância. Tente novamente.',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Função para carregar as instâncias do Supabase
+  const fetchInstances = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('instancias')
+        .select('*')
+        .order('data_atualizacao', { ascending: false });
+
+      if (error) {
+        console.error('Erro ao carregar instâncias:', error);
+        toast({
+          title: 'Erro ao carregar instâncias',
+          description: error.message,
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      if (data) {
+        const formattedInstances: Instance[] = data.map(instance => ({
+          name: instance.nome,
+          status: instance.status === 'conectada' ? 'online' : 'offline',
+          qrCode: instance.qrcode ? `data:image/png;base64,${instance.qrcode}` : undefined,
+          data_atualizacao: instance.data_atualizacao
+        }));
+        setInstances(formattedInstances);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar instâncias:', error);
+      toast({
+        title: 'Erro ao carregar instâncias',
+        description: 'Não foi possível carregar as instâncias. Tente novamente.',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // Carregar instâncias ao montar o componente
+  useEffect(() => {
+    fetchInstances();
+  }, []);
+
+  // Efeito para verificar status inicial das instâncias quando a página carregar
+  useEffect(() => {
+    const checkAllInstancesStatus = async () => {
+      for (const instance of instances) {
+        await checkInstanceStatus(instance.name);
+      }
+    };
+
+    checkAllInstancesStatus();
+  }, []); // Executa apenas quando o componente é montado
+
+  // Efeito para verificar status das instâncias periodicamente
+  useEffect(() => {
+    const statusInterval = setInterval(() => {
+      instances.forEach(instance => checkInstanceStatus(instance.name));
+    }, 30000);
+
+    return () => clearInterval(statusInterval);
+  }, [instances]);
+
+  // Limpar URLs de objeto quando o componente for desmontado
+  useEffect(() => {
+    return () => {
+      instances.forEach(instance => {
+        if (instance.qrCode) {
+          URL.revokeObjectURL(instance.qrCode);
+        }
+      });
+    };
+  }, [instances]);
+
+  // Efeito para atualizar QR Code quando o diálogo estiver aberto
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+
+    const updateQrCodeWithRetry = async () => {
+      if (isQrCodeDialogOpen && selectedInstance) {
+        try {
+          await handleConnect(selectedInstance.name);
+        } catch (error) {
+          console.error('Erro ao atualizar QR Code:', error);
+        }
+      }
+    };
+
+    if (isQrCodeDialogOpen && selectedInstance) {
+      // Configura o intervalo para atualizar o QR Code
+      intervalId = setInterval(updateQrCodeWithRetry, 20000);
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [isQrCodeDialogOpen, selectedInstance]);
   
   return (
     <PageLayout>
-      <div className="space-y-8">
-        <PageHeader
-          title="Configurações"
-          description="Gerencie as configurações do sistema"
-        />
-        
-        <ContentCard title="Configuração do WhatsApp">
+      <div className="max-w-4xl mx-auto py-8 space-y-8">
+        <h1 className="text-2xl font-bold">Evolution</h1>
+
           <Card>
             <CardHeader>
-              <CardTitle>Conectar WhatsApp</CardTitle>
+            <CardTitle>Criar Nova Instância</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4">
-                    <div className="space-y-2">
-                  <Label htmlFor="instanceName">Nome da Instância</Label>
+          <CardContent>
+            <div className="flex gap-2">
                       <Input 
-                    id="instanceName"
-                    placeholder="Digite um nome para a instância"
+                placeholder="Nome da instância"
                         value={instanceName}
                         onChange={(e) => setInstanceName(e.target.value)}
-                    disabled={isLoading || confirmationStatus === 'confirmed'}
+                disabled={isLoading}
                       />
-                  </div>
-                  
-                {!qrCodeData && !confirmationStatus && (
                     <Button 
                       onClick={handleCreateInstance}
                     disabled={isLoading || !instanceName.trim()}
-                    className="w-full"
                     >
                       {isLoading ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Criando instância...
+                    Criando...
+                  </>
+                ) : (
+                  'Criar Instância'
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-4">
+          {instances.map((instance) => (
+            <Card key={instance.name}>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>{instance.name}</CardTitle>
+                    <p className="text-sm text-muted-foreground">
+                      Última atualização: {format(new Date(instance.data_atualizacao), 'dd/MM/yyyy HH:mm')}
+                    </p>
+                  </div>
+                  <Badge variant={instance.status === 'online' ? 'default' : 'destructive'}>
+                    {instance.status === 'online' ? (
+                      <>
+                        <Check className="mr-2 h-4 w-4" />
+                        Conectado
                       </>
                       ) : (
+                      <>
+                        <X className="mr-2 h-4 w-4" />
+                        Desconectado
+                      </>
+                    )}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="flex justify-end gap-2">
+                  {instance.status === 'offline' ? (
+                    <Button
+                      onClick={() => handleConnect(instance.name)}
+                      disabled={isLoading}
+                    >
+                      {isLoading ? (
                         <>
-                          <Plus className="mr-2 h-4 w-4" />
-                          Criar Instância
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Conectando...
                         </>
+                      ) : (
+                        'Conectar'
                       )}
                     </Button>
-                )}
-                
-                {qrCodeData && (
-                  <div className="space-y-4">
-                    <div className="flex justify-center">
-                      <img
-                        src={qrCodeData}
-                        alt="QR Code"
-                        className="w-64 h-64"
-                      />
-                    </div>
-                    
-                    <div className="flex justify-center gap-2">
-                      {confirmationStatus === 'waiting' && (
-                        <Badge variant="outline" className="bg-yellow-50">
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Aguardando conexão...
-                        </Badge>
-                      )}
-                      
-                      {confirmationStatus === 'confirmed' && (
-                        <Badge variant="outline" className="bg-green-50">
-                          <Check className="mr-2 h-4 w-4" />
-                          Conectado
-                        </Badge>
-                      )}
-                      
-                      {confirmationStatus === 'failed' && (
-                        <Badge variant="outline" className="bg-red-50">
-                          Falha na conexão
-                        </Badge>
-                      )}
-                    </div>
-                    
-                    {confirmationStatus !== 'confirmed' && (
-                      <div className="flex justify-center gap-2">
+                  ) : (
                         <Button
-                          variant="outline"
-                          onClick={resetQrCode}
+                      variant="destructive"
+                      onClick={() => handleDisconnect(instance.name)}
                           disabled={isLoading}
                         >
-                          <RefreshCw className="mr-2 h-4 w-4" />
-                          Atualizar QR Code
+                      Desconectar
                         </Button>
-                        
-                        <Button
-                          variant="outline"
-                          onClick={handleTryAgain}
-                          disabled={isLoading}
-                        >
-                          Tentar Novamente
-                        </Button>
-                      </div>
-                    )}
-                  </div>
               )}
               </div>
             </CardContent>
           </Card>
-        </ContentCard>
+          ))}
+        </div>
+
+        <Dialog open={isQrCodeDialogOpen} onOpenChange={setIsQrCodeDialogOpen}>
+          <DialogContent className="sm:max-w-md flex flex-col items-center justify-center">
+            <DialogHeader>
+              <DialogTitle className="text-center">QR Code - {selectedInstance?.name}</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col items-center gap-4 py-4">
+              {selectedInstance?.qrCode ? (
+                <>
+                  <div className="relative bg-white p-4 rounded-lg shadow-lg">
+                    <img
+                      key={selectedInstance.qrCode}
+                      src={selectedInstance.qrCode}
+                      alt="QR Code"
+                      className="w-64 h-64 object-contain"
+                    />
+                  </div>
+                  <p className="text-sm text-muted-foreground text-center">
+                    Escaneie o QR Code para conectar
+                  </p>
+                  <p className="text-xs text-muted-foreground text-center">
+                    O QR Code será atualizado automaticamente a cada 20 segundos
+                  </p>
+                </>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Carregando QR Code...</span>
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
         </div>
     </PageLayout>
   );

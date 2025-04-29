@@ -4,158 +4,129 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import {
   LayoutDashboard,
-  MessageSquare,
-  Users,
-  BookOpen,
-  BarChart2,
-  Calendar,
-  ChevronLeft,
-  ChevronRight,
   Settings,
   LogOut,
   Menu,
   X,
-  Send
+  Send,
+  BarChart2
 } from 'lucide-react';
 
 const menuItems = [
   { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { path: '/chats', icon: MessageSquare, label: 'Chats' },
-  { path: '/clients', icon: Users, label: 'Clientes' },
-  { path: '/knowledge', icon: BookOpen, label: 'Conhecimento' },
-  { path: '/evolution', icon: BarChart2, label: 'Evolution' },
-  { path: '/schedule', icon: Calendar, label: 'Agenda' },
   { path: '/campanha', icon: Send, label: 'Campanha' },
+  { path: '/evolution', icon: BarChart2, label: 'Evolution' },
 ];
 
 const bottomMenuItems = [
   { path: '/config', icon: Settings, label: 'Configurações' },
 ];
 
-export function Sidebar() {
+export const Sidebar = () => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
   const { signOut } = useAuth();
 
-  // Fechar menu mobile quando a tela for redimensionada para desktop
+  const toggleSidebar = () => {
+    setIsCollapsed(!isCollapsed);
+  };
+
+  const toggleMobileMenu = () => {
+    setIsMobileMenuOpen(!isMobileMenuOpen);
+  };
+
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth >= 768) {
-        setIsMobileMenuOpen(false);
+      if (window.innerWidth < 768) {
+        setIsCollapsed(true);
       }
     };
 
+    handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   return (
     <>
-      {/* Botão do menu mobile */}
       <button
-        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-        className="fixed top-4 left-4 z-50 p-2 rounded-lg bg-sidebar text-sidebar-foreground md:hidden"
+        className="md:hidden fixed top-4 left-4 z-50 p-2 rounded-md bg-petshop-blue text-white"
+        onClick={toggleMobileMenu}
       >
-        {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+        {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
       </button>
 
-      {/* Overlay para mobile */}
-      {isMobileMenuOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40 md:hidden"
-          onClick={() => setIsMobileMenuOpen(false)}
-        />
-      )}
-
-      {/* Sidebar */}
-      <div
+      <aside
         className={cn(
-          'fixed md:relative h-screen bg-sidebar text-sidebar-foreground transition-all duration-300 ease-in-out z-40',
+          'fixed top-0 left-0 h-full bg-petshop-blue text-white transition-all duration-300 z-40',
           isCollapsed ? 'w-16' : 'w-64',
           isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         )}
       >
-        <div className="flex h-full flex-col">
-          {/* Logo e Botão de Colapso */}
-          <div className="flex h-16 items-center justify-between px-4 border-b border-sidebar-border">
-            {!isCollapsed && (
-              <span className="text-xl font-bold">Administrador</span>
-            )}
+        <div className="flex flex-col h-full">
+          <div className="p-4 flex items-center justify-between">
+            {!isCollapsed && <h1 className="text-xl font-bold">Administrador</h1>}
             <button
-              onClick={() => setIsCollapsed(!isCollapsed)}
-              className="p-2 rounded-lg hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              onClick={toggleSidebar}
+              className="hidden md:block p-2 rounded-md hover:bg-white/10"
             >
-              {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+              {isCollapsed ? (
+                <Menu className="h-6 w-6" />
+              ) : (
+                <X className="h-6 w-6" />
+              )}
             </button>
           </div>
 
-          {/* Menu Principal */}
-          <nav className="flex-1 overflow-y-auto py-4">
-            <ul className="space-y-1 px-2">
-              {menuItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = location.pathname === item.path;
-                
-                return (
-                  <li key={item.path}>
-                    <Link
-                      to={item.path}
-                      className={cn(
-                        'flex items-center gap-3 rounded-lg px-3 py-2 transition-colors',
-                        isActive
-                          ? 'bg-sidebar-primary text-sidebar-primary-foreground'
-                          : 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-                      )}
-                      onClick={() => setIsMobileMenuOpen(false)}
-                    >
-                      <Icon size={20} />
-                      {!isCollapsed && <span>{item.label}</span>}
-                    </Link>
-                  </li>
-                );
-              })}
+          <nav className="flex-1 overflow-y-auto">
+            <ul className="space-y-2 p-4">
+              {menuItems.map((item) => (
+                <li key={item.path}>
+                  <Link
+                    to={item.path}
+                    className={cn(
+                      'flex items-center gap-4 p-2 rounded-md hover:bg-white/10 transition-colors',
+                      location.pathname === item.path && 'bg-white/20'
+                    )}
+                  >
+                    <item.icon className="h-6 w-6" />
+                    {!isCollapsed && <span>{item.label}</span>}
+                  </Link>
+                </li>
+              ))}
             </ul>
           </nav>
 
-          {/* Menu Inferior */}
-          <div className="border-t border-sidebar-border p-4">
-            <ul className="space-y-1">
-              {bottomMenuItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = location.pathname === item.path;
-                
-                return (
-                  <li key={item.path}>
-                    <Link
-                      to={item.path}
-                      className={cn(
-                        'flex items-center gap-3 rounded-lg px-3 py-2 transition-colors',
-                        isActive
-                          ? 'bg-sidebar-primary text-sidebar-primary-foreground'
-                          : 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-                      )}
-                      onClick={() => setIsMobileMenuOpen(false)}
-                    >
-                      <Icon size={20} />
-                      {!isCollapsed && <span>{item.label}</span>}
-                    </Link>
-                  </li>
-                );
-              })}
+          <div className="p-4 border-t border-white/10">
+            <ul className="space-y-2">
+              {bottomMenuItems.map((item) => (
+                <li key={item.path}>
+                  <Link
+                    to={item.path}
+                    className={cn(
+                      'flex items-center gap-4 p-2 rounded-md hover:bg-white/10 transition-colors',
+                      location.pathname === item.path && 'bg-white/20'
+                    )}
+                  >
+                    <item.icon className="h-6 w-6" />
+                    {!isCollapsed && <span>{item.label}</span>}
+                  </Link>
+                </li>
+              ))}
               <li>
                 <button
                   onClick={signOut}
-                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-red-500 hover:bg-red-500/10"
+                  className="flex items-center gap-4 p-2 rounded-md hover:bg-white/10 transition-colors w-full"
                 >
-                  <LogOut size={20} />
+                  <LogOut className="h-6 w-6" />
                   {!isCollapsed && <span>Sair</span>}
                 </button>
               </li>
             </ul>
           </div>
         </div>
-      </div>
+      </aside>
     </>
   );
-} 
+}; 

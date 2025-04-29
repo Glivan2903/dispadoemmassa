@@ -59,9 +59,9 @@ const Login = () => {
               className="w-64 h-64"
             />
             <div className="text-center space-y-4">
-              <h1 className="text-4xl font-bold text-white">Dashboard</h1>
+              <h1 className="text-4xl font-bold text-white">Disparador em Massa</h1>
               <p className="text-xl text-gray-200">
-                Gerencie seu negócio de forma eficiente e profissional
+              Automatize seus envios e otimize seus resultados com eficiência e profissionalismo
               </p>
             </div>
           </div>
